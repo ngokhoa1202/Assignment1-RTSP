@@ -94,11 +94,8 @@ class Client:
 		if self.state == self.READY:
       
 			threading.Thread(target=self.listenRtp).start()
-
 			self.playEvent = threading.Event()
-   
 			self.playEvent.clear()
-   
 			self.sendRtspRequest(self.PLAY)
 	
 	def listenRtp(self):		
@@ -139,13 +136,13 @@ class Client:
 	def writeFrame(self, data):
 		"""Write the received frame to a temp image file. Return the image file."""
 	#TODO
-		cachename = CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT
+		fileName = CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT
 
-		file = open(cachename, 'wb')
+		file = open(fileName, 'wb')
 		file.write(data)
 		file.close()
   
-		return cachename
+		return fileName
 
 
 	def updateMovie(self, imageFile):
@@ -160,12 +157,9 @@ class Client:
 		"""Connect to the Server. Start a new RTSP/TCP session."""
 	#TODO
 		self.rtspSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
 		try:
 			self.rtspSocket.connect((self.serverAddr, self.serverPort))
-	
 		except :
-			
 			tkinter.messagebox.showwarning('Connection Failed', 'Connection to \'%s\' failed. '%self.serverAddr)
 	
 	def sendRtspRequest(self, requestCode):
@@ -176,45 +170,31 @@ class Client:
 		#SETUP
 		if requestCode == self.SETUP and self.state == self.INIT:
 			threading.Thread(target=self.recvRtspReply).start()
-			# Update rtspSeq
-			self.rtspSeq+= 1
-      
-			#Write Request
-			request = 'SETUP ' + self.fileName + ' RTSP/1.0\nCSeq: '+ str(self.rtspSeq) + '\nTransport: RTP/UDP; client_port= ' + str(self.rtpPort)
+			self.rtspSeq = self.rtspSeq + 1
    
-			#Keep track of the request
+			request = 'SETUP ' + self.fileName + ' RTSP/1.0\nCSeq: '+ str(self.rtspSeq) + '\nTransport: RTP/UDP; client_port= ' + str(self.rtpPort)
 			self.requestSent = self.SETUP
 
 
 		#PLAY
 		elif requestCode == self.PLAY and self.state == self.READY:
-			
-			self.rtspSeq += 1
-
+			self.rtspSeq = self.rtspSeq + 1
 			request = 'PLAY ' + self.fileName + ' RTSP/1.0\nCSeq: '+ str(self.rtspSeq) + '\nSession: '+ str(self.sessionId)
-
 			self.requestSent = self.PLAY
 
 		elif  requestCode == self.PAUSE and self.state == self.PLAYING:
-			
-			self.rtspSeq += 1
-
+			self.rtspSeq = self.rtspSeq + 1
 			request = 'PAUSE ' + self.fileName + ' RTSP/1.0\nCSeq: ' + str(self.rtspSeq) + '\nSession: ' + str(self.sessionId)
-
 			self.requestSent = self.PAUSE
   
-  
-  		#TEARDOWN
 		elif requestCode == self.TEARDOWN and not self.state == self.INIT:
-			
-			self.rtspSeq +=1
-	
+			self.rtspSeq = self.rtspSeq + 1
 			request = 'TEARDOWN ' + self.fileName+ ' RTSP/1.0\nCSeq: '+ str(self.rtspSeq) + '\nSession: '+ str(self.sessionId) 
 			self.requestSent = self.TEARDOWN
-		else:
-			return
+   
+		else: return
 		
-		self.rtspSocket.send(request.encode())
+		self.rtspSocket.send(request.encode("utf-8"))
 		print('\nData sent: \n'+request)
 		
 	
@@ -223,19 +203,14 @@ class Client:
 		"""Receive RTSP reply from the server."""
 		#TODO
 		while True:
-			
-			reply = self.rtspSocket.recv(1024)
+			repMsg = self.rtspSocket.recv(1024)
    
-			if reply:
-				self.parseRtspReply(reply.decode())
-    
-
+			if repMsg:
+				self.parseRtspReply(repMsg.decode("utf-8"))
+  
 			if self.requestSent == self.TEARDOWN:
-				
 				self.rtspSocket.shutdown(socket.SHUT_RDWR)
-    
 				self.rtspSocket.close()
-    
 				break
     
 	
@@ -253,31 +228,22 @@ class Client:
      
 			if self.sessionId == session:
 				
-				if int(lines[0].split(' ')[1]) == 200:
-        
-					if self.requestSent == self.SETUP:
-         
+				if lines[0] == 'RTSP/1.0 200 OK':
+					if (self.requestSent == self.SETUP):
 						self.state = self.READY
-  
 						self.openRtpPort()
-
-					
-					elif self.requestSent == self.PLAY:
-	
- 						self.state = self. PLAYING
-
-					elif self.requestSent == self.PAUSE:
+      
+					elif (self.requestSent == self.PLAY):
+						self.state = self.PLAYING
+      
+					elif (self.requestSent == self.PAUSE):
+						self.playEvent.set()
 						self.state = self.READY
       
-						self.playEvent.set()
-      
-					elif self.requestSent == self.TEARDOWN:
-
-						self.state = self.INIT
-      
+					elif (self.requestSent == self.TEARDOWN):
 						self.teardownAcked = 1
+					
   
-	
 	def openRtpPort(self):
 		"""Open RTP socket binded to a specified port."""
 		#-------------
@@ -299,12 +265,9 @@ class Client:
    
 	def handler(self):
 		"""Handler on explicitly closing the GUI window."""
-		
 		self.pauseMovie()
   		#TODO
 		if tkinter.messagebox.askokcancel("Quit?", "Are you sure?"):
 			self.exitClient()
-
 		else:
-      
 			self.pauseMovie()
